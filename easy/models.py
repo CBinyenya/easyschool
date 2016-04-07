@@ -1,7 +1,10 @@
+from __future__ import division
 from django.db import models
 from django.forms import ModelForm
 from django.utils import timezone
 from django.contrib.auth.models import User
+from django.views.generic.edit import UpdateView
+from django import forms
 LEVEL_CHOICES = (
     ('G', "Gold"),
     ('S', "Silver"),
@@ -24,12 +27,14 @@ POSITION_CHOICES = (
     ('HM', "Head Teacher"),
     ('DP', "Deputy teacher"),
     ('SM', "Senior Master"),
+    ('CT', "Class Teacher"),
     ('EH', "Examination Head"),
     ('AA', "Academic Affairs"),
     ('HOS', "Head of Sciences"),
     ('HOH', "Head of Humanities"),
     ('HOL', "Head of Languages"),
     ('HOM', "Head of Mathematics"),
+
 )
 LETTER_CHOICES = (
     ('A', "A"),
@@ -55,27 +60,6 @@ MINUTES_CHOICES = (
 
 
 class School(models.Model):
-    """
-    Contains the fields for the student table and defines all the relationships the table has with all other tables.
-    The details of this table are to be filled in different levels so as to give a continuous impression of the flow.
-    Fields to be field on the first level include:
-           school_name, mission, vision, code, logo, email, website, country, county ,city, location, description,
-           gender_type, private, head, kindergarten, level
-    Fields to be field on the second level include:
-            stream, directors
-    Fields to be filled on the third level include:
-            approved, credit
-    Field descriptions:
-    1. Gender type - Weather a boy's, girl's or mixed school
-    2. private - Weather a private or a public school
-    3. Head - Principal or Head Teacher
-    4. level - Primary, Secondary, British system
-    5. streams - streams of classes in the school, if there is a single stream the word single is used
-    6. directors - Board of Directors or a single director for a private school
-    7. approved - School is legit as per the ischool company
-    8. credit - SMS credit remaining
-    """
-
     school_name = models.CharField(max_length=50)
     mission = models.TextField(max_length=200)
     vision = models.TextField(max_length=200)
@@ -94,37 +78,15 @@ class School(models.Model):
     private = models.CharField(max_length=7, choices=PRIVATE_PUBLIC_CHOICE)
     approved = models.BooleanField(default=False)
     credit = models.PositiveIntegerField(default=0)
-    head = models.ForeignKey('Teacher', related_name="skull", null=True)  # temporary null value
+    head = models.ForeignKey('Teacher', related_name="skull", null=True)
     subjects = models.ManyToManyField('Subject', blank=True)
     kindergarten = models.BooleanField(default=False)
     level = models.ForeignKey('SchoolLevel', null=True, blank=True)
     stream = models.ManyToManyField('Stream', blank=True)
     directors = models.ManyToManyField('Director', blank=True)
-
-    '''activity = models.ManyToManyField(
-        'Activity',
-        null=True,
-        on_delete=models.CASCADE
-    )
-    galary = models.ManyToManyField(
-        'Gallery',
-        null=True,
-        on_delete=models.CASCADE
-    )
-    events = models.ManyToManyField(
-        'Event',
-        null=True,
-        on_delete=models.CASCADE
-    )
-    fees_attributes = models.ManyToManyField(
-        'FeeStructure',
-        null=True,
-        on_delete=models.CASCADE
-    )
-    '''
+    date = models.DateTimeField(default=timezone.now)
     no_of_students = models.PositiveIntegerField(null=True, blank=True)
     app_level = models.CharField(max_length=1, choices=LEVEL_CHOICES)
-
     payed_status = models.BooleanField()
 
     def __str__(self):
@@ -147,7 +109,7 @@ class Director(User):
 class Staff(User):
     photo = models.ImageField(null=True, blank=True)
     phone = models.CharField(max_length=13, null=True)
-    gender = models.CharField(max_length=1, choices=GENDER, null=True)
+    gender = models.CharField(max_length=1, choices=GENDER, null=True, blank=True)
     school = models.ForeignKey(
         School,
         db_column="school_name",
@@ -161,31 +123,49 @@ class Staff(User):
 
 
 class Teacher(Staff):
-    linkdin = models.URLField(null=True)
+    linkdin = models.URLField(null=True, blank=True)
     subjects = models.ManyToManyField('Subject', blank=True)
-    # classes = models.ManyToManyField('Classs', null=True)
+    classes = models.ManyToManyField('Stream', blank=True)
     position = models.CharField(max_length=4, choices=POSITION_CHOICES, null=True, blank=True)
 
     def __str__(self):
-        return "%s %s" % (self.first_name, self.last_name)
+        return self.get_full_name()
+
+    def get_absolute_url(self):
+        from django.core.urlresolvers import reverse
+        return reverse('easy.views.teacher_home_page', kwargs={'pk': self.pk})
 
     class Meta:
         db_table = "teachers"
 
+
 class TeacherForm(ModelForm):
+    def clean(self):
+        clean_data = super(TeacherForm, self).clean()
+        username = clean_data.get('username')
+        try:
+            User.objects.get(username=username)
+            raise forms.ValidationError("This username is not available for use")
+        except User.DoesNotExist:
+            pass
+
     class Meta:
         model = Teacher
         success_url = "/admin1/login"
-        fields = ['photo', 'gender', 'phone', 'position', 'linkdin']
+        fields = ['first_name', 'last_name', 'photo', 'gender', 'position', 'linkdin', 'password']
 
 
 class Subject(models.Model):
     subject_name = models.CharField(max_length=20)
     topics = models.ManyToManyField('Topic', blank=True)
+    # Redundant relationship
     class_level = models.ForeignKey('ClassLevel', db_column="level_name", null=True)
 
     def __str__(self):
         return "%s for %s" % (self.subject_name, self.class_level)
+
+    class Meta:
+        db_table = "subjects"
 
 
 class Topic(models.Model):
@@ -237,16 +217,32 @@ class Stream(models.Model):
 class Student(User):
     reg_number = models.CharField(max_length=30)
     phone = models.CharField(max_length=13)
-    school = models.ForeignKey(School)
+    school = models.ForeignKey(School, null=True, blank=True)
     parents = models.ManyToManyField('Parent')
-    stream = models.ForeignKey(Stream)
+    stream = models.ForeignKey(Stream, null=True, blank=True)
+    exam_subject = models.ForeignKey(Subject, null=True, blank=True)
 
     def __str__(self):
         return self.username
 
     class Meta:
-        pass
         db_table = "students"
+
+class StudentForm(ModelForm):
+    def clean(self):
+        clean_data = super(StudentForm, self).clean()
+        username = clean_data.get('username')
+        try:
+            User.objects.get(username=username)
+            raise forms.ValidationError("This username is not available for use")
+        except User.DoesNotExist:
+            pass
+
+    class Meta:
+        model = Student
+        success_url = "easy/student"
+        fields = ['first_name', 'last_name']
+
 
 
 class Parent(User):
@@ -259,34 +255,95 @@ class Parent(User):
         db_table = "parents"
 
 
+class ParentForm(ModelForm):
+    def clean(self):
+        clean_data = super(ParentForm, self).clean()
+        username = clean_data.get('username')
+        try:
+            User.objects.get(username=username)
+            raise forms.ValidationError("This username is not available for use")
+        except User.DoesNotExist:
+            pass
+
+    class Meta:
+        model = Parent
+        success_url = "easy/parent"
+        fields = ['first_name', 'last_name']
+
+
+
 class Answer(models.Model):
-    answer = models.CharField(max_length=30, null=True)
+    answer = models.CharField(max_length=30)
     letter = models.CharField(max_length=1, choices=LETTER_CHOICES)
-    image = models.ImageField()
+    marks = models.PositiveIntegerField()
+    text_field = models.TextField(max_length=100, null=True, blank=True)
+    image = models.ImageField(null=True, blank=True)
+    date = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.answer
+
+    class Meta:
+        db_table = "answers"
 
 
 class Question(models.Model):
     question = models.TextField(max_length=200)
+    number = models.PositiveSmallIntegerField()
     class_level = models.ForeignKey(ClassLevel)
     question_subject = models.ForeignKey(Subject)
     question_topic = models.ForeignKey(Topic, null=True)
     level = models.CharField(max_length=1, choices=QUESTION_LEVEL, null=True)
+    answer = models.CharField(max_length=100, null=True, blank=True)
     correct_answer = models.ForeignKey(Answer)
 
+    def __str__(self):
+        return self.question
 
-class MultipleChoiceQeustion(Question):
+    class Meta:
+        db_table = "questions"
+
+
+class MultipleChoiceQuestion(Question):
     choices = models.ManyToManyField(Answer, blank=True)
+    date = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.question
+
+    class Meta:
+        db_table = "multiple_choices"
+
+
+class CompletedTests(models.Model):
+    student = models.ForeignKey(Student)
+    test = models.ForeignKey('Exam')
+    question = models.ForeignKey(MultipleChoiceQuestion)
+    answer = models.ForeignKey(Answer, null=True)
+    value = models.BooleanField()
+    date = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.student.get_full_name()
+
+    def full_name(self):
+        return self.student.get_full_name()
+
+    class Meta:
+        db_table = "completed_tests"
 
 
 class Exam(models.Model):
     exam_name = models.CharField(max_length=30)
+    school = models.ForeignKey(School, blank=True)
     class_level = models.ForeignKey(ClassLevel)
+    stream = models.ManyToManyField(Stream, blank=True)
     exam_subject = models.ForeignKey(Subject)
     supervisor = models.ForeignKey(Teacher)
-    questions_ans = models.ManyToManyField(MultipleChoiceQeustion, blank=True)
+    questions_ans = models.ManyToManyField(MultipleChoiceQuestion, blank=True)
     date_available = models.DateTimeField(default=timezone.now)
-    hours = models.PositiveSmallIntegerField(choices=HOURS_CHOICES)
-    minutes = models.PositiveSmallIntegerField(choices=MINUTES_CHOICES)
+    hours = models.PositiveSmallIntegerField(choices=HOURS_CHOICES, null=True, blank=True)
+    minutes = models.PositiveSmallIntegerField(choices=MINUTES_CHOICES, null=True, blank=True)
 
     def __str__(self):
         return self.exam_name
@@ -294,17 +351,123 @@ class Exam(models.Model):
     class Meta:
         db_table = "exams"
 
+class ExamUploads(models.Model):
+    exam_name = models.CharField(max_length=56)
+    excel_file = models.FileField(upload_to='files/uploads')
+
+    class Meta:
+        # abstract = True
+        db_table = "uploads"
+
 
 class Results(models.Model):
     exam_name = models.ForeignKey(Exam)
     student_id = models.ForeignKey(Student)
     total_marks = models.PositiveSmallIntegerField()
+    out_off = models.PositiveSmallIntegerField()
+    date = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return self.exam_name, self.student_id
+        return self.exam_name.exam_name
 
     class Meta:
         db_table = "results"
+
+
+class ResultObjects(models.Model):
+    name = models.OneToOneField(Exam, primary_key=True)
+    subject = models.ForeignKey(Subject)
+    supervisor = models.ForeignKey(Teacher)
+    results = models.ForeignKey(Results)
+    average_marks = models.DecimalField(null=True, max_digits=5, decimal_places=2)
+
+    def average(self):
+        try:
+            results = Results.objects.filter(exam_name=self.name)
+        except Results.DoesNotExist:
+            return 0
+        num_of_students = len(results)
+        marks = 0
+        for result in results:
+            total = result.out_off
+            marks += result.total_marks
+        if marks > 0:
+            average = marks/num_of_students
+            percentage = (100//total) * average
+            average = percentage
+        else:
+            average = 0
+        return average
+
+    def convert(self):
+        pass
+
+    class Meta:
+        db_table = "averages"
+
+
+
+class Activity(models.Model):
+    school = models.ForeignKey(School)
+    type = models.CharField(max_length=30)
+
+    class Meta:
+        db_table = "activities"
+
+
+class Gallery(models.Model):
+    school = models.ForeignKey(School)
+    type = models.CharField(max_length=30)
+    image = models.ImageField(upload_to="galary")
+
+    class Meta:
+        db_table = "galleries"
+
+
+class Sponsor(models.Model):
+    name = models.CharField(max_length=50)
+
+    class Meta:
+        db_table = "sponsors"
+
+
+class EventOrganizer(models.Model):
+    organizer_name = models.CharField(max_length=50)
+    sponsors = models.ForeignKey(Sponsor)
+
+    class Meta:
+        db_table = "organizers"
+
+
+class Event(models.Model):
+    school = models.ForeignKey(School)
+    date = models.DateTimeField(default=timezone.now)
+    organizer = models.ManyToManyField(EventOrganizer)
+    location = models.CharField(max_length=30)
+
+    class Meta:
+        db_table = "events"
+
+
+class FeeElement(models.Model):
+    school = models.ForeignKey(School)
+    element_name = models.CharField(max_length=50)
+    class_level = models.ForeignKey(ClassLevel)
+    amount = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "fee_elements"
+
+
+class FeeStructure(models.Model):
+    school = models.ForeignKey(School)
+    elements = models.ForeignKey(FeeElement)
+    class_level = models.ForeignKey(ClassLevel)
+
+    class Meta:
+        db_table = "fee_structure"
+
+
 
 class AdminModel(models.Model):
     pass

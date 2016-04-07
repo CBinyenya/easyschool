@@ -17,7 +17,7 @@
 </head>
 {% block content %}
 <body>
-    <form action="" method="post">
+    <form action="{% url 'details'%}" method="post">
         {% csrf_token %}
         <legend><span class="number">2</span>Your detailed info</legend>
         {{formset}}

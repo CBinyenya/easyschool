@@ -16,9 +16,11 @@ Including another URLconf
 from django.conf.urls import include, url
 from django.contrib import admin
 import easy
+import easyapi
 urlpatterns = [
     url(r'^admin/', include(admin.site.urls)),
     # url(r'^admin/', 'django.contrib.auth.views.login'),
     url(r'^easy/', include('easy.urls')),
-    url(r'^$', 'easy.views.my_view', name="home"),
+    url(r'^api/', include('easyapi.urls')),
+    url(r'^$', easy.views.my_view, name="home"),
 ]
