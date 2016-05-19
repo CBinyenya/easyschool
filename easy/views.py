@@ -1,26 +1,20 @@
 from __future__ import division
 __author__ = 'Monte'
-import os
 import csv
 import json
+import types
 import random
-
 from xlrd import open_workbook
-
 from django.http import HttpResponseRedirect, HttpResponse
-from django.shortcuts import render_to_response, render, redirect
+from django.shortcuts import render_to_response, render
 from django.forms.formsets import formset_factory
-from django.template import RequestContext
 from django.db import IntegrityError
 from django.db.models import Q
-from django.views.generic.edit import ProcessFormView, UpdateView
+from django.views.generic.edit import ProcessFormView
 from django.views.generic.base import TemplateView
-from django.views.generic import View, UpdateView
-from django.forms import ValidationError
-from django.utils import timezone
-from django.conf import settings
-from django.contrib.auth.models import User, Group
-from django.contrib.auth import logout, login, authenticate
+from django.views.generic import View
+from django.contrib.auth.models import Group
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.core.exceptions import ObjectDoesNotExist
@@ -34,12 +28,15 @@ def api_login_view(request):
     password = request.POST['password']
     HttpResponse(request.user.check_password(raw_password=password))
 
-
+@login_required(login_url='/easy/login/')
 def logout_view(request):
     logout(request)
     return HttpResponseRedirect("/easy/login")
 
 class SignUpView(ProcessFormView):
+    """
+    Create an account for a new system user e.i. teacher, parent and student
+    """
     form_class = TeacherForm
     initial = {'key': "value"}
     template_name = "admin1/signup.html"
@@ -76,7 +73,8 @@ class SignUpView(ProcessFormView):
             group = Group.objects.get(name="Teachers")
             group.user_set.add(teacher)
             group.save()
-            return HttpResponseRedirect("/easy/teacher/%d" % teacher.id)
+            return HttpResponseRedirect("/easy/profile/%d" % teacher.id)
+
         elif account == "parent":
             parent = Parent.objects.create_user(username=request.user.username)
             parent.set_password(passwd1)
@@ -84,8 +82,10 @@ class SignUpView(ProcessFormView):
             group = Group.objects.get(name="Parents")
             group.user_set.add(parent)
             group.save()
+            logout(request)
             return HttpResponse("Your account has been created. Please download our app from google play to start using"
                                 " easy school")
+
         elif account == "student":
             student = Student.objects.create_user(username=request.user.username)
             student.set_password(passwd1)
@@ -93,6 +93,7 @@ class SignUpView(ProcessFormView):
             group = Group.objects.get(name="Students")
             group.user_set.add(student)
             group.save()
+            logout(request)
             return HttpResponse("Success! your account has been created. Contact your class teacher to upload your"
                                 " details")
         elif account == "both":
@@ -104,6 +105,7 @@ class SignUpView(ProcessFormView):
 
 
 class UpdateTeacherView(UpdateView):
+
     class Meta:
         model = Teacher
         fields = ['password', 'last_name', 'gender']
@@ -180,70 +182,170 @@ def my_view(request):
 
 @login_required(login_url='/easy/login/')
 def teacher_home_page(request, pk=None):
+    """
+    Redirects to the teacher's dashboard
+    """
+    context = dict()
     username = request.user.username
     tday = timezone.now()
     year = tday.year
-    full_name = request.user.get_full_name()
-    teacher = Teacher.objects.get(username=username)
-    content = dict()
+    teacher = Teacher.objects.get(username=str(username))
+
     last = teacher.last_login
     if last:
         if tday.day == last.day and tday.month == last.month:
             pass
         else:
-            content['message'] = "Hello %s " % teacher.first_name
+            context['message'] = "Hello %s " % teacher.first_name
     else:
-        content['message'] = "Welcome to EasySchool Teachers' Panel. Update your profile to have more functionality"
+        context['message'] = "Welcome to EasySchool Teachers' Panel. Update your profile to have more functionality"
 
+    positions = list()
+    for position in teacher.position.all():
+        positions.append(position.name)
+
+    # create the contents needed for the teachers dashboard
+
+    if teacher.school:
+        school = teacher.school
+        context['school'] = school
+    else:
+        if "Head Teacher" not in positions:
+            context["message"] = "Please include the school you teach in your profile"
+            return HttpResponseRedirect("profile/%d" % teacher.id)
+
+    try:
+        context['class'] = Stream.objects.get(class_teacher=teacher)
+    except Stream.DoesNotExist:
+        pass
+
+    context['teacher'] = teacher
+    context['full_name'] = teacher.get_full_name()
+    context['year'] = tday.year
+    context['subjects'] = teacher.subjects.all()
+    context['year'] = year
+    context['classteacher'] = teacher.classes.all()
+    context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
+
+    def initialize_head_teacher():
+        try:
+            School.objects.get(head=teacher)
+            context["head_teacher"] = True
+            context["tests"] = get_tests(teacher)
+            context['results'] = ResultObjects.objects.filter(supervisor=teacher)
+            context['num_of_students'] = len(Student.objects.all())
+            context['message'] = "Hi how are you"
+        except School.DoesNotExist:
+            return HttpResponse("Please create a school")
+        return context
+
+    def initialize_class_teacher():
+        try:
+            stream = Stream.objects.get(class_teacher=teacher)
+            context['num_of_students'] = len(Student.objects.filter(stream=stream))
+        except Stream.DoesNotExist:
+            context['num_of_students'] = 0
+
+        context['results'] = ResultObjects.objects.filter(supervisor=teacher)
+        context["tests"] = get_tests(teacher)
+        return context
+
+    def initialize_subject_teacher():
+        context['tests'] = get_tests(teacher)
+        context['results'] = ResultObjects.objects.filter(supervisor=teacher)
+        return context
+
+    if "Head Teacher" in positions:
+        # Initialize Head Teacher functions and attributes
+        context = initialize_head_teacher()
+        if isinstance(context, HttpResponse):
+            return context
+
+    if "Class Teacher" in positions:
+        # Initialize Class Teacher functions and attributes
+        context = initialize_class_teacher()
+
+    if "Subject Teacher" in positions:
+        # Initializing Subject Teacher functions and attributes
+        context = initialize_subject_teacher()
+
+    return render(request, "pages/teachers_dashboard.html", context)
+
+def get_tests(teacher):
+    today = timezone.now()
     tests = list()
     test_results = list()
-    content['teacher'] = teacher
-    content['full_name'] = full_name
-    content['year'] = tday.year
-    content['subjects'] = teacher.subjects.all()
+
+    if not teacher.school:
+        return list()
+    else:
+        school = teacher.school
+
     for subject in teacher.subjects.all():
-        test = Exam.objects.filter(supervisor=teacher, exam_subject=subject)
+        if teacher == school.head:
+            test = Exam.objects.filter(school=school)
+        else:
+            test = Exam.objects.filter(supervisor=teacher, exam_subject=subject)
         max_loop = 0
+
+        # Loop through each test to calculate average results
+
         for each in test:
-            details = dict()
             if max_loop > 3:
                 break
-            details["name"] = each.exam_name
-            details['date_available'] = each.date_available
             results = Results.objects.filter(exam_name=each)
-            num_of_students = len(results)
-            details['students'] = num_of_students
+
             for result in results:
                 avg = average(each)
-                if each.date_available > tday:
+                if each.date_available > today:
                     try:
-                        ResultObjects.objects.create(name=each, subject=subject, results=result, supervisor=teacher,
-                                                     average_marks=avg)
+                        if teacher == school.head:
+                            ResultObjects.objects.create(name=each, subject=subject, results=result, average_marks=avg)
+                        else:
+                            ResultObjects.objects.create(name=each, subject=subject, results=result, supervisor=teacher,
+                                                         average_marks=avg)
                     except IntegrityError:
-                        obj = ResultObjects(name=each, subject=subject, results=result, supervisor=teacher)
+                        if teacher == school.head:
+                            obj = ResultObjects(name=each, subject=subject, results=result)
+                        else:
+                            obj = ResultObjects(name=each, subject=subject, results=result, supervisor=teacher)
                         obj.average = avg
                         obj.save()
                 else:
-                    obj = ResultObjects(name=each, subject=subject, results=result, supervisor=teacher)
+                    if teacher == school.head:
+                            obj = ResultObjects(name=each, subject=subject, results=result)
+                    else:
+                        obj = ResultObjects(name=each, subject=subject, results=result, supervisor=teacher)
+
                     if obj.average != avg:
                         obj.average = avg
                         obj.save()
 
             test_results.append(each.exam_name)
         tests.append(test_results)
-    content['results'] = ResultObjects.objects.filter(supervisor=teacher)
-    content['tests'] = tests
-    content['year'] = year
-    content['classteacher'] = teacher.classes.all()
-    content['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-    content['num_of_students'] = len(Student.objects.filter(school=teacher.school))
-    return render(request, "pages/teachers_dashboard.html", content)
+    return tests
+
 
 class TeachersUpdateView(UpdateView):
     model = Teacher
-    fields = ["first_name", "last_name", "phone", "email", "gender", "subjects"]
+    fields = ["first_name", "last_name", "phone", "email", "gender", "subjects", "position", "school"]
     template_name = "pages/teacher_update_form.html"
     template_name_suffix = '_update_form'
+
+    @classmethod
+    def as_view(cls, **initkwargs):
+        view = super(TeachersUpdateView, cls).as_view(**initkwargs)
+        return login_required(view)
+
+    def get(self, request, *args, **kwargs):
+        username = request.user.username
+        full_name = request.user.get_full_name()
+        teacher = Teacher.objects.get(username=username)
+        self.object = Teacher.objects.get(username=username)
+        context = self.get_context_data()
+        context['teacher'] = teacher
+        context['full_name'] = full_name
+        return super(TeachersUpdateView, self).render_to_response(context)
 
 
 class CreateTestView(View):
@@ -417,12 +519,17 @@ def tests_view(request):
     return render(request, "pages/tests.html", context)
 
 def average(name):
+    """
+    Calculates the average performance of a class
+    """
     try:
         results = Results.objects.filter(exam_name=name)
     except Results.DoesNotExist:
         return 0
+
     num_of_students = len(results)
     marks = 0
+
     for result in results:
         marks += result.total_marks
     if marks > 0:

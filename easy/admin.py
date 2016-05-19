@@ -1,6 +1,5 @@
 from django.contrib import admin
 from models import *
-# Register your models here.
 
 
 class SchoolAdmin(admin.ModelAdmin):
@@ -9,8 +8,12 @@ class SchoolAdmin(admin.ModelAdmin):
 
 
 class TeacherAdmin(admin.ModelAdmin):
-    list_display = ("username", "first_name", "last_name", "phone", "school", "linkdin", "position")
+    list_display = ("username", "first_name", "last_name", "phone", "school", "linkdin")
     search_fields = ("username", "first_name", "last_name", "phone", "position")
+
+
+class TeacherPositionAdmin(admin.ModelAdmin):
+    pass
 
 
 class SubjectsAdmin(admin.ModelAdmin):
@@ -102,5 +105,6 @@ admin.site.register(Exam, ExamAdmin)
 admin.site.register(CompletedTests, CompletedTestsAdmin)
 admin.site.register(Results, ResultsAdmin)
 admin.site.register(ResultObjects, ResultObjectsAdmin)
+admin.site.register(TeacherPosition, TeacherPositionAdmin)
 admin_site = MyAdminSite(name='admin')
 admin_site.register(AdminModel)

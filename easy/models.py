@@ -126,7 +126,7 @@ class Teacher(Staff):
     linkdin = models.URLField(null=True, blank=True)
     subjects = models.ManyToManyField('Subject', blank=True)
     classes = models.ManyToManyField('Stream', blank=True)
-    position = models.CharField(max_length=4, choices=POSITION_CHOICES, null=True, blank=True)
+    position = models.ManyToManyField('TeacherPosition', blank=True)
 
     def __str__(self):
         return self.get_full_name()
@@ -135,8 +135,23 @@ class Teacher(Staff):
         from django.core.urlresolvers import reverse
         return reverse('easy.views.teacher_home_page', kwargs={'pk': self.pk})
 
+    def save(self, *args, **kwargs):
+
+        if self.position == "HM":
+            super(Teacher, self).save(*args, **kwargs)
+        else:
+            self.school = None
+            super(Teacher, self).save(*args, **kwargs)
+
     class Meta:
         db_table = "teachers"
+
+
+class TeacherPosition(models.Model):
+    name = models.CharField(max_length=40, primary_key=True)
+
+    def __str__(self):
+        return self.name
 
 
 class TeacherForm(ModelForm):
