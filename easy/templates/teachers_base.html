@@ -55,7 +55,11 @@
                      <span class="icon-bar"></span>
                      <span class="icon-bar"></span>
                     </a>
-                    <a class="brand" href="{% url 'teacher' teacher.id%}">Teacher's Panel</a>
+                    {%if teacher%}
+                        <a class="brand" href="{% url 'teacher' teacher.id%}">Teacher's Panel</a>
+                    {%else%}
+                        <a class="brand" href="#">Teacher's Panel</a>
+                    {%endif%}
                     <div class="nav-collapse collapse">
                         <ul class="nav pull-right">
                             <li class="dropdown">
@@ -63,9 +67,16 @@
                                     <i class="icon-user"></i> {{full_name}} <i class="caret"></i>
                                 </a>
                                 <ul class="dropdown-menu">
+                                    {%if teacher%}
                                     <li>
                                         <a tabindex="-1" href="/easy/profile/{{teacher.id}}">Profile</a>
                                     </li>
+                                    {%endif%}
+
+                                    <li>
+                                        <a tabindex="-1" href="{%url 'school_request'%}">Change School</a>
+                                    </li>
+
                                     <li>
                                         <a href="{% url 'logout'%}" tabindex="-1" >Logout</a>
                                     </li>
@@ -91,7 +102,9 @@
                         {%else%}
                             <li>
                         {%endif%}
-                        <a href="{% url 'teacher' teacher.id%}"><i class="icon-chevron-right"></i> Dashboard</a>
+                        {%if teacher%}
+                            <a href="{% url 'teacher' teacher.id%}"><i class="icon-chevron-right"></i> Dashboard</a>
+                        {%endif%}
                         </li>
 
                         {%if page == "statistics"%}
@@ -164,7 +177,7 @@
 	                                <ul class="breadcrumb">
 	                                    <i class="icon-chevron-left hide-sidebar"><a href='#' title="Hide Sidebar" rel='tooltip'>&nbsp;</a></i>
 	                                    <i class="icon-chevron-right show-sidebar" style="display:none;"><a href='#' title="Show Sidebar" rel='tooltip'>&nbsp;</a></i>
-	                                    {%if page%}
+	                                    {%if page and teacher%}
                                             <li>
                                                 <a href="{% url 'teacher' teacher.id%}">Dashboard</a> <span class="divider">/</span>
                                             </li>

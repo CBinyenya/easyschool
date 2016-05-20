@@ -4,7 +4,12 @@
      <!-- block -->
      <div class="block">
          <div class="navbar navbar-inner block-header">
-             <div class="muted pull-left">Tests created by {{full_name}}</div>
+             {%if school%}
+                <div class="muted pull-left">Current school is {{school.school_name}}</div>
+             {%else%}
+                <div class="muted pull-left">School Request</div>
+             {%endif%}
+
          </div>
          <div class="block-content collapse in">
 
@@ -19,7 +24,7 @@
                              <label class="control-label" for="school_code"> School Code </label>
                              <div class="controls">
                                  <input type="text" class="span6" id="school_code"  data-provide="typeahead" data-items="4"\
-                                        name = "stream">
+                                        name = "school_code">
                              </div>
                          </div>
 
@@ -27,7 +32,7 @@
                              <label class="control-label" for="school_name"> School Name </label>
                              <div class="controls">
                                  <input type="text" class="span6" id="school_name"  data-provide="typeahead" data-items="4"
-                                        name = "stream">
+                                        name = "school_name">
                                     </div>
                                 </div>
 
@@ -35,7 +40,8 @@
                              <button type="submit" class="btn btn-primary">Upload details</button>
                              <button type="reset" class="btn">Cancel</button>
                          </div>
-
+                    </fieldset>
+                </form>
              </div>
          </div>
      </div>

@@ -61,8 +61,8 @@ MINUTES_CHOICES = (
 
 class School(models.Model):
     school_name = models.CharField(max_length=50)
-    mission = models.TextField(max_length=200)
-    vision = models.TextField(max_length=200)
+    mission = models.TextField(max_length=200, blank=True, null=True)
+    vision = models.TextField(max_length=200, blank=True, null=True)
     code = models.CharField(max_length=8)
     telephone = models.CharField(max_length=20)
     mobile = models.CharField(max_length=13)
@@ -78,7 +78,8 @@ class School(models.Model):
     private = models.CharField(max_length=7, choices=PRIVATE_PUBLIC_CHOICE)
     approved = models.BooleanField(default=False)
     credit = models.PositiveIntegerField(default=0)
-    staff = models.ManyToManyField('Teacher', through='TeacherMembership')
+    staff = models.ManyToManyField('Teacher', through='TeacherMembership', through_fields=('school', 'teacher'),
+                                   blank=True)
     head = models.ForeignKey('Teacher', related_name="skull", null=True)
     subjects = models.ManyToManyField('Subject', blank=True)
     kindergarten = models.BooleanField(default=False)
@@ -88,7 +89,7 @@ class School(models.Model):
     date = models.DateTimeField(default=timezone.now)
     no_of_students = models.PositiveIntegerField(null=True, blank=True)
     app_level = models.CharField(max_length=1, choices=LEVEL_CHOICES)
-    payed_status = models.BooleanField()
+    payed_status = models.BooleanField(default=False)
 
     def __str__(self):
         return self.school_name
@@ -211,7 +212,7 @@ class ClassLevel(models.Model):
 class Stream(models.Model):
     level_name = models.ForeignKey(ClassLevel)
     stream_name = models.CharField(max_length=20)
-    class_teacher = models.ForeignKey(Teacher, null=True)
+    class_teacher = models.ForeignKey(Teacher, null=True, blank=True)
 
     def __str__(self):
         return "%s %s" % (self.level_name, self.stream_name)

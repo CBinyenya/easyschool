@@ -23,6 +23,7 @@ urlpatterns = [
     url(r'signup/$', easy.views.SignUpView.as_view(), name="signup"),
     url(r'details/$', easy.views.details_view, name="details"),
     url(r'profile/(?P<pk>[0-9]+)/$', easy.views.TeachersUpdateView.as_view(), name="teacher_profile"),
+    url(r'create-school/$', easy.views.CreateSchoolView.as_view(), name="create_school"),
     url(r'school-update/$', easy.views.SchoolRequestView.as_view(), name="school_request"),
 ]
 

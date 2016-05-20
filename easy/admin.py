@@ -3,7 +3,7 @@ from models import *
 
 
 class SchoolAdmin(admin.ModelAdmin):
-    list_display = ("school_name", "code", "mobile", "email", "head", "credit")
+    list_display = ("school_name", "code", "mobile", "email", "credit")
     search_fields = ("school_name", "code", "mobile", "credit")
 
 
@@ -11,6 +11,10 @@ class TeacherAdmin(admin.ModelAdmin):
     list_display = ("username", "first_name", "last_name", "phone", "linkdin")
     search_fields = ("username", "first_name", "last_name", "phone", "position")
 
+
+class TeacherMembershipAdmin(admin.ModelAdmin):
+    list_display = ("teacher", "school")
+    search_fields = ("teacher__last_name", "school__school_name")
 
 class TeacherPositionAdmin(admin.ModelAdmin):
     pass
@@ -90,6 +94,7 @@ class ResultObjectsAdmin(admin.ModelAdmin):
 
 admin.site.register(School, SchoolAdmin)
 admin.site.register(Teacher, TeacherAdmin)
+admin.site.register(TeacherMembership, TeacherMembershipAdmin)
 admin.site.register(Subject, SubjectsAdmin)
 admin.site.register(Topic, TopicAdmin)
 admin.site.register(SchoolLevel, SchoolLevelAdmin)
