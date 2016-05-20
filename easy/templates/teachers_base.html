@@ -108,14 +108,16 @@
                         {%endif%}
                             <a href="{% url 'create'%}"><i class="icon-chevron-right"></i>Create Test or Exams </a>
                         </li>
-                        {%if page == "messages"%}
-                            <li class="active">
-                        {%else%}
-                        <li>
+                        {%if class_teacher or head_teacher%}
+                            {%if page == "messages"%}
+                                <li class="active">
+                            {%else%}
+                            <li>
+                            {%endif%}
+                                <a href="{% url 'message'%}"><i class="icon-chevron-right"></i>Message Panel</a>
+                            </li>
                         {%endif%}
-                            <a href="{% url 'message'%}"><i class="icon-chevron-right"></i>Message Panel</a>
-                        </li>
-                        {%if classteacher%}
+                        {%if class_teacher or head_teacher%}
                             {%if page == "manage"%}
                                 <li class="active">
                             {%else%}
@@ -145,9 +147,9 @@
                 <div class="span9" id="content">
                     <div class="row-fluid">
                         {% if message%}
-                        <div class="alert alert-success alert-block">
+                        <div class="alert alert-info alert-block">
                             <a class="close" data-dismiss="alert" href="#">&times;</a>
-                            <h4 class="alert-heading">Success!</h4>
+                            <h4 class="alert-heading">Message</h4>
                             {{message}}
                         </div>
                         {% elif error%}

@@ -1,0 +1,43 @@
+{%extends "teachers_base.html"%}
+{%block content%}
+ <div class="row-fluid">
+     <!-- block -->
+     <div class="block">
+         <div class="navbar navbar-inner block-header">
+             <div class="muted pull-left">Tests created by {{full_name}}</div>
+         </div>
+         <div class="block-content collapse in">
+
+             <div class="span12">
+                 <form class="form-horizontal" name="create" action="{% url 'school_request'%}" method="post"
+                      enctype="multipart/form-data"  role="form">
+                    {% csrf_token %}
+                    <fieldset>
+                        <legend>School Update</legend>
+
+                         <div class="control-group">
+                             <label class="control-label" for="school_code"> School Code </label>
+                             <div class="controls">
+                                 <input type="text" class="span6" id="school_code"  data-provide="typeahead" data-items="4"\
+                                        name = "stream">
+                             </div>
+                         </div>
+
+                         <div class="control-group">
+                             <label class="control-label" for="school_name"> School Name </label>
+                             <div class="controls">
+                                 <input type="text" class="span6" id="school_name"  data-provide="typeahead" data-items="4"
+                                        name = "stream">
+                                    </div>
+                                </div>
+
+                         <div class="form-actions">
+                             <button type="submit" class="btn btn-primary">Upload details</button>
+                             <button type="reset" class="btn">Cancel</button>
+                         </div>
+
+             </div>
+         </div>
+     </div>
+ </div>
+{%endblock%}

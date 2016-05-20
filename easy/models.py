@@ -78,6 +78,7 @@ class School(models.Model):
     private = models.CharField(max_length=7, choices=PRIVATE_PUBLIC_CHOICE)
     approved = models.BooleanField(default=False)
     credit = models.PositiveIntegerField(default=0)
+    staff = models.ManyToManyField('Teacher', through='TeacherMembership')
     head = models.ForeignKey('Teacher', related_name="skull", null=True)
     subjects = models.ManyToManyField('Subject', blank=True)
     kindergarten = models.BooleanField(default=False)
@@ -110,17 +111,9 @@ class Staff(User):
     photo = models.ImageField(null=True, blank=True)
     phone = models.CharField(max_length=13, null=True)
     gender = models.CharField(max_length=1, choices=GENDER, null=True, blank=True)
-    school = models.ForeignKey(
-        School,
-        db_column="school_name",
-        related_name="staff",
-        null=True,
-        blank=True,
-    )
 
     class Meta:
         abstract = True
-
 
 class Teacher(Staff):
     linkdin = models.URLField(null=True, blank=True)
@@ -135,16 +128,14 @@ class Teacher(Staff):
         from django.core.urlresolvers import reverse
         return reverse('easy.views.teacher_home_page', kwargs={'pk': self.pk})
 
-    def save(self, *args, **kwargs):
-
-        if self.position == "HM":
-            super(Teacher, self).save(*args, **kwargs)
-        else:
-            self.school = None
-            super(Teacher, self).save(*args, **kwargs)
-
     class Meta:
         db_table = "teachers"
+
+
+class TeacherMembership(models.Model):
+    teacher = models.OneToOneField(Teacher, primary_key=True)
+    school = models.ForeignKey(School)
+    head_teacher = models.BooleanField(default=False)
 
 
 class TeacherPosition(models.Model):

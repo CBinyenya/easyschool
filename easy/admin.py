@@ -8,7 +8,7 @@ class SchoolAdmin(admin.ModelAdmin):
 
 
 class TeacherAdmin(admin.ModelAdmin):
-    list_display = ("username", "first_name", "last_name", "phone", "school", "linkdin")
+    list_display = ("username", "first_name", "last_name", "phone", "linkdin")
     search_fields = ("username", "first_name", "last_name", "phone", "position")
 
 

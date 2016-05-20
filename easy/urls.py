@@ -22,7 +22,8 @@ urlpatterns = [
     url(r'student-uploads/$', easy.views.download_question_excel_view, name="upload_students"),
     url(r'signup/$', easy.views.SignUpView.as_view(), name="signup"),
     url(r'details/$', easy.views.details_view, name="details"),
-    url(r'profile/(?P<pk>[0-9]+)/$', easy.views.TeachersUpdateView.as_view(), name="teacher_profile")
+    url(r'profile/(?P<pk>[0-9]+)/$', easy.views.TeachersUpdateView.as_view(), name="teacher_profile"),
+    url(r'school-update/$', easy.views.SchoolRequestView.as_view(), name="school_request"),
 ]
 
 

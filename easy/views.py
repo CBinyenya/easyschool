@@ -2,7 +2,6 @@ from __future__ import division
 __author__ = 'Monte'
 import csv
 import json
-import types
 import random
 from xlrd import open_workbook
 from django.http import HttpResponseRedirect, HttpResponse
@@ -104,13 +103,6 @@ class SignUpView(ProcessFormView):
             return render(request, self.template_name, {'errors': error})
 
 
-class UpdateTeacherView(UpdateView):
-
-    class Meta:
-        model = Teacher
-        fields = ['password', 'last_name', 'gender']
-        template_name = "admin1/sign_up.html"
-
 def details_view(request):
     username = request.user.username
     try:
@@ -180,6 +172,41 @@ def my_view(request):
                 except ObjectDoesNotExist:
                     return HttpResponse("Please download our app from play store to view your child's records")
 
+
+class SchoolRequestView(TemplateView):
+    template_name = "pages/school_request.html"
+
+    @method_decorator(login_required)
+    def dispatch(self, *args, **kwargs):
+        return super(SchoolRequestView, self).dispatch(*args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
+        teacher = Teacher.objects.get(username=request.user.username)
+        full_name = request.user.get_full_name()
+        tday = timezone.now()
+        year = tday.year
+        context = dict()
+        context['teacher'] = teacher
+        context['full_name'] = full_name
+        context['year'] = year
+        context['page'] = "tests"
+        school = get_school(teacher)
+
+        if school:
+            context['school'] = school
+            context['message'] = "You are already a teacher at %s. Do you want to change this?" % school.school_name
+            context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
+            context['num_of_students'] = len(Student.objects.filter(school=school))
+            tests = Results.objects.all()
+            context['tests'] = tests
+
+    def post(self, request, *args, **kwargs):
+        pass
+
+    def get_context_data(self, **kwargs):
+        context = super(SchoolRequestView, self).get_context_data(**kwargs)
+
+
 @login_required(login_url='/easy/login/')
 def teacher_home_page(request, pk=None):
     """
@@ -191,28 +218,18 @@ def teacher_home_page(request, pk=None):
     year = tday.year
     teacher = Teacher.objects.get(username=str(username))
 
-    last = teacher.last_login
-    if last:
-        if tday.day == last.day and tday.month == last.month:
-            pass
-        else:
-            context['message'] = "Hello %s " % teacher.first_name
-    else:
-        context['message'] = "Welcome to EasySchool Teachers' Panel. Update your profile to have more functionality"
-
     positions = list()
     for position in teacher.position.all():
         positions.append(position.name)
 
     # create the contents needed for the teachers dashboard
-
-    if teacher.school:
-        school = teacher.school
-        context['school'] = school
-    else:
+    try:
+        member = TeacherMembership.objects.get(teacher=teacher)
+        context['school'] = member.school
+    except TeacherMembership.DoesNotExist:
         if "Head Teacher" not in positions:
-            context["message"] = "Please include the school you teach in your profile"
-            return HttpResponseRedirect("profile/%d" % teacher.id)
+            context['error'] = "Please request a school you would like to or are teaching"
+            return HttpResponseRedirect("school-update/")
 
     try:
         context['class'] = Stream.objects.get(class_teacher=teacher)
@@ -224,7 +241,6 @@ def teacher_home_page(request, pk=None):
     context['year'] = tday.year
     context['subjects'] = teacher.subjects.all()
     context['year'] = year
-    context['classteacher'] = teacher.classes.all()
     context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
 
     def initialize_head_teacher():
@@ -234,7 +250,6 @@ def teacher_home_page(request, pk=None):
             context["tests"] = get_tests(teacher)
             context['results'] = ResultObjects.objects.filter(supervisor=teacher)
             context['num_of_students'] = len(Student.objects.all())
-            context['message'] = "Hi how are you"
         except School.DoesNotExist:
             return HttpResponse("Please create a school")
         return context
@@ -242,6 +257,7 @@ def teacher_home_page(request, pk=None):
     def initialize_class_teacher():
         try:
             stream = Stream.objects.get(class_teacher=teacher)
+            context['class_teacher'] = teacher.classes.all()
             context['num_of_students'] = len(Student.objects.filter(stream=stream))
         except Stream.DoesNotExist:
             context['num_of_students'] = 0
@@ -276,10 +292,14 @@ def get_tests(teacher):
     tests = list()
     test_results = list()
 
-    if not teacher.school:
+    try:
+        member = TeacherMembership.objects.get(teacher=teacher)
+        if not member.school:
+            return list()
+        else:
+            school = member.school
+    except TeacherMembership.DoesNotExist:
         return list()
-    else:
-        school = teacher.school
 
     for subject in teacher.subjects.all():
         if teacher == school.head:
@@ -328,7 +348,7 @@ def get_tests(teacher):
 
 class TeachersUpdateView(UpdateView):
     model = Teacher
-    fields = ["first_name", "last_name", "phone", "email", "gender", "subjects", "position", "school"]
+    fields = ["first_name", "last_name", "phone", "email", "gender", "subjects", "position"]
     template_name = "pages/teacher_update_form.html"
     template_name_suffix = '_update_form'
 
@@ -360,10 +380,10 @@ class CreateTestView(View):
         context['teacher'] = teacher
         context['full_name'] = full_name
         context['page'] = "create"
-        if not teacher.school:
+        school = get_school(teacher)
+        if not school:
             context['error'] = "You don't have any school details. Contact the Head Teacher to include you"
             return render(request, "pages/create.html", context)
-        school = School.objects.get(id=teacher.school.id)
         streams = school.stream.all()
         subjects = teacher.subjects.all()
 
@@ -373,7 +393,7 @@ class CreateTestView(View):
         context['school'] = school
         context['year'] = self.year
         context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-        context['num_of_students'] = len(Student.objects.filter(school=teacher.school))
+        context['num_of_students'] = len(Student.objects.filter(school=school))
 
         return render(request, "pages/create.html", context)
 
@@ -502,6 +522,16 @@ class CreateTestView(View):
 def create_test_view(request):
     pass
 
+def get_school(teacher):
+    try:
+        member = TeacherMembership.objects.get(teacher=teacher)
+        if not member.school:
+            return
+        else:
+            return member.school
+    except TeacherMembership.DoesNotExist:
+        return None
+
 def tests_view(request):
     teacher = Teacher.objects.get(username=request.user.username)
     full_name = request.user.get_full_name()
@@ -509,13 +539,19 @@ def tests_view(request):
     year = tday.year
     context = dict()
     context['teacher'] = teacher
-    tests = Results.objects.all()
-    context['tests'] = tests
+    context['full_name'] = full_name
     context['year'] = year
     context['page'] = "tests"
-    context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-    context['num_of_students'] = len(Student.objects.filter(school=teacher.school))
-    context['full_name'] = full_name
+    school = get_school(teacher)
+    if not school:
+        context['error'] = "You have not registered to any school. Contact admin for help"
+    else:
+        context['school'] = school
+        context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
+        context['num_of_students'] = len(Student.objects.filter(school=school))
+        tests = Results.objects.all()
+        context['tests'] = tests
+
     return render(request, "pages/tests.html", context)
 
 def average(name):
@@ -552,9 +588,13 @@ class StatisticsPageView(TemplateView):
         teacher = Teacher.objects.get(username=request.user.username)
         full_name = request.user.get_full_name()
         context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-        context['num_of_students'] = len(Student.objects.filter(school=teacher.school))
         context['full_name'] = full_name
         context['teacher'] = teacher
+        school = get_school(teacher)
+        if school:
+            context['num_of_students'] = len(Student.objects.filter(school=school))
+        else:
+            context['error'] = "You don't have any school details. Contact the Head Teacher to include you"
         return super(StatisticsPageView, self).render_to_response(context)
 
     def get_context_data(self, **kwargs):
@@ -602,7 +642,10 @@ class StudentsPageView(TemplateView):
         teacher = Teacher.objects.get(username=request.user.username)
         full_name = request.user.get_full_name()
         _subjects = teacher.subjects.all()
-        all_students = Student.objects.filter(school=teacher.school)
+        school = get_school(teacher)
+        if school:
+            context['num_of_students'] = len(Student.objects.filter(school=school))
+        all_students = Student.objects.filter(school=school)
         for subject in _subjects:
             for each in all_students:
                 if not subject.class_level or not each.stream:
@@ -618,7 +661,6 @@ class StudentsPageView(TemplateView):
         context['classes'] = json.dumps(subjects)
         context['tests'] = json.dumps(tests)
         context['num_of_tests'] = len(tests)
-        context['num_of_students'] = len(Student.objects.filter(school=teacher.school))
         context['full_name'] = full_name
         return super(StudentsPageView, self).render_to_response(context)
 
@@ -654,7 +696,10 @@ class StudentsPageView(TemplateView):
         context['exam'] = test_name
         context['results'] = results
         context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-        context['num_of_students'] = len(Student.objects.filter(school=teacher.school))
+        school = get_school(teacher)
+        if school:
+            context['num_of_students'] = len(Student.objects.filter(school=school))
+
         return super(StudentsPageView, self).render_to_response(context)
 
     def get_context_data(self, **kwargs):
@@ -670,20 +715,22 @@ def student_home_page(request):
     year = tday.year
     username = request.user.username
     details = dict()
+
     try:
         student = Student.objects.get(username=username)
-        fullname = student.get_full_name()
-        stream = student.stream
-        if stream:
-            class_level = stream.level_name
-        else:
-            class_level = 0
-        details['fullname'] = fullname
-        details['stream'] = stream
-        details['year'] = year
     except ObjectDoesNotExist:
         return HttpResponse("Your account as a student is not available. Please contact your class teacher")
 
+    fullname = student.get_full_name()
+    stream = student.stream
+    if stream:
+        class_level = stream.level_name
+    else:
+        class_level = 0
+
+    details['fullname'] = fullname
+    details['stream'] = stream
+    details['year'] = year
     available_tests = list()
     try:
         tests = Exam.objects.filter(class_level=class_level)
@@ -706,7 +753,7 @@ def student_home_page(request):
             info = "%d tests available for %s" % (len(available_tests), stream.stream_name)
 
     except ObjectDoesNotExist:
-        info = info = "There are no available tests at the moment"
+        info = "There are no available tests at the moment"
     details = {
         'tests': available_tests,
         'info': info,
