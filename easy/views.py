@@ -14,7 +14,7 @@ from django.views.generic.edit import ProcessFormView, CreateView
 from django.views.generic.base import TemplateView
 from django.views.generic import View
 from django.contrib.auth.models import Group
-from django.contrib.auth import logout
+from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.core.exceptions import ObjectDoesNotExist
@@ -73,7 +73,8 @@ class SignUpView(ProcessFormView):
             group = Group.objects.get(name="Teachers")
             group.user_set.add(teacher)
             group.save()
-            return HttpResponseRedirect("/easy/profile/%d" % teacher.id)
+            request.session['member_id'] = request.user.id
+            return HttpResponseRedirect("/easy/login")
 
         elif account == "parent":
             parent = Parent.objects.create_user(username=request.user.username)
@@ -195,15 +196,22 @@ class CreateSchoolView(SuccessMessageMixin, CreateView):
         teacher = Teacher.objects.get(username=username)
         self.object = self.context_object_name
         context = self.get_context_data()
-        context['teacher'] = teacher
-        context['full_name'] = full_name
+
+        # call function to personalize the context
+        response = initialize_teacher_page(teacher, context)
+        if isinstance(response, tuple):
+            return context
+
+        if isinstance(response, HttpResponse) or isinstance(response, HttpResponseRedirect):
+            return response
+
         return super(CreateSchoolView, self).render_to_response(context)
 
 
 
 class TeachersUpdateView(UpdateView):
     model = Teacher
-    fields = ["first_name", "last_name", "phone", "email", "gender", "subjects", 'classes', "position"]
+    fields = ["username", "first_name", "last_name", "phone", "email", "gender", "subjects", 'classes', "position"]
     template_name = "pages/teacher_update_form.html"
     template_name_suffix = '_update_form'
 
@@ -218,8 +226,12 @@ class TeachersUpdateView(UpdateView):
         teacher = Teacher.objects.get(username=username)
         self.object = Teacher.objects.get(username=username)
         context = self.get_context_data()
-        context['teacher'] = teacher
-        context['full_name'] = full_name
+
+        # call function to personalize the context
+        context = initialize_teacher_page(teacher, context)
+        if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
+            return context
+
         return super(TeachersUpdateView, self).render_to_response(context)
 
 
@@ -236,20 +248,22 @@ class SchoolRequestView(TemplateView):
         tday = timezone.now()
         year = tday.year
         context = dict()
-        context['teacher'] = teacher
-        context['full_name'] = full_name
-        context['year'] = year
-        context['page'] = "tests"
         school = get_school(teacher)
 
-        if school:
-            context['school'] = school
-            context['message'] = "You are already a teacher at %s. Do you want to change this?" % school.school_name
-            context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-            context['num_of_students'] = len(get_students(teacher))
-            tests = Results.objects.all()
-            context['tests'] = tests
+        # call function to personalize the context
+        response = initialize_teacher_page(teacher, context)
+        if isinstance(response, HttpResponse) or isinstance(response, HttpResponseRedirect):
+            return response
 
+        if isinstance(response, tuple):
+            try:
+                context.pop("warning", False)
+                context['message'] = "The Head Teacher will have to accept your request. Please remind him/her if you" \
+                                     "not associated in time"
+            except KeyError:
+                pass
+        elif isinstance(response, dict):
+            context = response
         return super(SchoolRequestView, self).render_to_response(context)
 
     def post(self, request, *args, **kwargs):
@@ -272,39 +286,55 @@ def teacher_home_page(request, pk=None):
     """
     context = dict()
     username = request.user.username
-    tday = timezone.now()
-    year = tday.year
     teacher = Teacher.objects.get(username=str(username))
+
+    # call function to personalize the context
+    context = initialize_teacher_page(teacher, context)
+    if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
+        return context
+
+    return render(request, "pages/teachers_dashboard.html", context)
+
+def initialize_teacher_page(teacher, context):
+    """
+    Initializes the required context or any other important attributes of the teacher initialize
+    """
+    today = timezone.now()
+    year = today.year
+    context['teacher'] = teacher
+    context['full_name'] = teacher.get_full_name()
+    context['year'] = today.year
+    context['subjects'] = teacher.subjects.all()
+    context['year'] = year
+    context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
 
     positions = list()
     for position in teacher.position.all():
         positions.append(position.name)
 
-    # create the contents needed for the teachers dashboard
     try:
         context['class'] = Stream.objects.get(class_teacher=teacher)
     except Stream.DoesNotExist:
         pass
 
-    context['teacher'] = teacher
-    context['full_name'] = teacher.get_full_name()
-    context['year'] = tday.year
-    context['subjects'] = teacher.subjects.all()
-    context['year'] = year
-    context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-
     try:
         member = TeacherMembership.objects.get(teacher=teacher)
+        if isinstance(complete_profile(teacher, context), type(context)):
+            return HttpResponseRedirect("/easy/profile/%d" % teacher.id)
         context['school'] = member.school
     except TeacherMembership.DoesNotExist:
-        if "Head Teacher" or "Deputy Head Teacher" in positions:
-            context['error'] = "Please request a school you would like to or are teaching"
+        if "Head Teacher" in positions or "Deputy Head Teacher" in positions:
             return HttpResponseRedirect("/easy/create-school")
         else:
-            return HttpResponseRedirect("/easy/school-update")
+            context['warning'] = 'You are not a member of any school. Use the upper right "Change School" option to ' \
+                                 'select a school you teach '
+            # return HttpResponseRedirect("/easy/school-update")
+    school = get_school(teacher)
+    if isinstance(school, tuple):
+        context['warning'] = "Your request to be a teacher at %s has not been confirmed" % school[1]
+        return context
 
     def initialize_head_teacher():
-        school = get_school(teacher)
         if not school:
             return HttpResponseRedirect("/easy/create-school")
         context["head_teacher"] = True
@@ -328,9 +358,6 @@ def teacher_home_page(request, pk=None):
     if "Head Teacher" in positions or "Deputy Head Teacher" in positions:
         # Initialize Head Teacher functions and attributes
         context = initialize_head_teacher()
-        if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
-            return context
-
     if "Class Teacher" in positions:
         # Initialize Class Teacher functions and attributes
         context = initialize_class_teacher()
@@ -339,13 +366,41 @@ def teacher_home_page(request, pk=None):
         # Initializing Subject Teacher functions and attributes
         context = initialize_subject_teacher()
 
-    return render(request, "pages/teachers_dashboard.html", context)
+    return context
+
+def complete_profile(teacher, context):
+    """
+    Check if the teacher's profile is completely filled.
+    Returns a context object containing an error message with respect to the empty field.
+    In case the profile is complete, None type is returned.
+    """
+    if not teacher.get_full_name():
+        # checks if teacher has filled the first and last names
+        context['error'] = "Please give your first and sir names"
+
+    elif not teacher.subjects.all():
+        # checks if the teacher has given the subjects he or she teaches
+        context['error'] = "Please give the subjects you teach"
+
+    elif not teacher.classes.all():
+        # checks if the teacher has any class(s) to teach
+        context['error'] = "Please give the classes/streams you teach"
+
+    elif not teacher.position.all():
+        # checks if the teacher has specified any position he or she holds in the school
+        context['error'] = "Please select at least one position you hold in the school"
+    elif not teacher.phone:
+        # checks if the teacher has specified a phone number
+        context['error'] = "Please provide your phone number"
+    else:
+        return
+    return context
 
 def get_students(teacher):
     """
     Returns students depending on the teachers position
     The head teacher and the deputy get a list of all the students in the school while the rest of the  teachers get a
-     list of all the student in their class or their subject class
+    list of all the student in their class or their subject class
     """
 
     def students(_school, _klass=None):
@@ -437,32 +492,28 @@ def get_tests(teacher):
 
 
 class CreateTestView(View):
-    tday = timezone.datetime.today()
-    year = tday.year
+    today = timezone.datetime.today()
+    year = today.year
 
     def get(self, request, *args, **kwargs):
         username = request.user.username
-        full_name = request.user.get_full_name()
         teacher = Teacher.objects.get(username=username)
         context = dict()
-        context['teacher'] = teacher
-        context['full_name'] = full_name
+
+        # call function to personalize the context
+        context = initialize_teacher_page(teacher, context)
+        if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
+            return context
         context['page'] = "create"
         school = get_school(teacher)
-        if not school:
-            context['error'] = "You don't have any school details. Contact the Head Teacher to include you"
+        if isinstance(school, tuple):
+            context['warning'] = "Your request to be a teacher at %s has not been confirmed" % school[1]
             return render(request, "pages/create.html", context)
         streams = school.stream.all()
         subjects = teacher.subjects.all()
 
-        context['page'] = "create"
         context['subjects'] = subjects
         context['streams'] = streams
-        context['school'] = school
-        context['year'] = self.year
-        context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-        context['num_of_students'] = len(get_students(teacher))
-
         return render(request, "pages/create.html", context)
 
     def post(self, request, *args, **kwargs):
@@ -473,8 +524,6 @@ class CreateTestView(View):
         streams = request.POST.getlist('streams[]')
         teacher = Teacher.objects.get(username=request.user.username)
         context = dict()
-        context['teacher'] = teacher
-        context['full_name'] = teacher.get_full_name()
         context['page'] = "create"
         all_subjects = Subject.objects.all()
         if not f:
@@ -596,9 +645,12 @@ def get_school(teacher):
         if not member.school:
             return
         else:
-            return member.school
+            if member.valid:
+                return member.school
+            else:
+                return False, member.school
     except TeacherMembership.DoesNotExist:
-        return None
+        return
 
 def tests_view(request):
     teacher = Teacher.objects.get(username=request.user.username)
@@ -606,19 +658,12 @@ def tests_view(request):
     tday = timezone.now()
     year = tday.year
     context = dict()
-    context['teacher'] = teacher
-    context['full_name'] = full_name
-    context['year'] = year
     context['page'] = "tests"
-    school = get_school(teacher)
-    if not school:
-        context['error'] = "You have not registered to any school. Contact admin for help"
-    else:
-        context['school'] = school
-        context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-        context['num_of_students'] = len(get_students(teacher))
-        tests = Results.objects.all()
-        context['tests'] = tests
+
+    # call function to personalize the context
+    context = initialize_teacher_page(teacher, context)
+    if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
+        return context
 
     return render(request, "pages/tests.html", context)
 
@@ -654,15 +699,11 @@ class StatisticsPageView(TemplateView):
     def get(self, request, *args, **kwargs):
         context = self.get_context_data()
         teacher = Teacher.objects.get(username=request.user.username)
-        full_name = request.user.get_full_name()
-        context['num_of_tests'] = len(Exam.objects.filter(supervisor=teacher))
-        context['full_name'] = full_name
-        context['teacher'] = teacher
-        school = get_school(teacher)
-        if school:
-            context['num_of_students'] = len(get_students(teacher))
-        else:
-            context['error'] = "You don't have any school details. Contact the Head Teacher to include you"
+
+        # call function to personalize the context
+        context = initialize_teacher_page(teacher, context)
+        if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
+            return context
         return super(StatisticsPageView, self).render_to_response(context)
 
     def get_context_data(self, **kwargs):
@@ -680,14 +721,16 @@ class ManageStudentsView(TemplateView):
         context = self.get_context_data()
         streams = list()
         teacher = Teacher.objects.get(username=request.user.username)
-        full_name = request.user.get_full_name()
 
         for stream in teacher.classes.all():
             streams.append(stream.__str__())
 
-        context['full_name'] = full_name
         context['streams'] = json.dumps(streams)
-        context['teacher'] = teacher
+
+        # call function to personalize the context
+        context = initialize_teacher_page(teacher, context)
+        if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
+            return context
         return super(ManageStudentsView, self).render_to_response(context)
 
     def get_context_data(self, **kwargs):
@@ -724,12 +767,15 @@ class StudentsPageView(TemplateView):
             tests.append(test.exam_name)
         for sub in _subjects:
             subjects.append(sub.subject_name)
-        context['teacher'] = teacher
+
+        # call function to personalize the context
+        context = initialize_teacher_page(teacher, context)
+        if isinstance(context, HttpResponse) or isinstance(context, HttpResponseRedirect):
+            return context
         context['students'] = json.dumps(list(set(students)))
         context['classes'] = json.dumps(subjects)
         context['tests'] = json.dumps(tests)
-        context['num_of_tests'] = len(tests)
-        context['full_name'] = full_name
+
         return super(StudentsPageView, self).render_to_response(context)
 
     def post(self, request, *args, **kwargs):

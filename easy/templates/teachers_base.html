@@ -165,6 +165,12 @@
                             <h4 class="alert-heading">Message</h4>
                             {{message}}
                         </div>
+                        {% elif warning%}
+                        <div class="alert">
+                            <a class="close" data-dismiss="alert" href="#">&times;</a>
+                            <h4 class="alert-heading">Warning!</h4>
+                            {{warning}}
+                        </div>
                         {% elif error%}
                         <div class="alert alert-error alert-block">
                             <a class="close" data-dismiss="alert" href="#">&times;</a>

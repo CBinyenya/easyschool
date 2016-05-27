@@ -2,6 +2,7 @@ from __future__ import division
 from django.db import models
 from django.forms import ModelForm
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.views.generic.edit import UpdateView
 from django import forms
@@ -97,6 +98,12 @@ class School(models.Model):
     class Meta:
         db_table = "schools"
 
+    def save(self, *args, **kwargs):
+        user = get_user_model()
+        teacher = Teacher.objects.get(username=user.get_username())
+        self.head = teacher
+        super(School, self).save(*args, **kwargs)
+
 
 class Director(User):
     pass
@@ -136,6 +143,7 @@ class Teacher(Staff):
 class TeacherMembership(models.Model):
     teacher = models.OneToOneField(Teacher, primary_key=True)
     school = models.ForeignKey(School)
+    valid = models.NullBooleanField()
     head_teacher = models.BooleanField(default=False)
 
 
@@ -223,7 +231,7 @@ class Stream(models.Model):
         
 class Student(User):
     reg_number = models.CharField(max_length=30)
-    phone = models.CharField(max_length=13)
+    phone = models.CharField(max_length=13, blank=True, null=True)
     school = models.ForeignKey(School, null=True, blank=True)
     parents = models.ManyToManyField('Parent')
     stream = models.ForeignKey(Stream, null=True, blank=True)
