@@ -14,8 +14,9 @@ Clone the project
 ## Usage
 1. Change the database settings in the settings.py file
 2. Startup the project in the usual django process i.e python manage.py runserver
+3. 
 ### Note: 
-Remember to account createsuperuser
+Remember to 'createsuperuser' account
 3. Create school levels
 4  Create class levels
 5. Add subjects and their respective topics
