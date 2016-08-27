@@ -1,6 +1,6 @@
 # EasySchool
-Web application that enables teachers and parents mornitor students accademic progress through a series of tests that are set,
-done and marked online. The statsistics of the students' performance is then made available to the respective teacher, parent or
+Web application that enables teachers and parents mornitor students academic progress through a series of tests that are set,
+done and marked online. The statisistics of the students' performance is then made available to the respective teacher, parent or
 student
 
 ##Dependecies
